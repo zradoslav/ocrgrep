@@ -169,7 +169,7 @@ main(int argc, char *argv[])
 	if (opt_pages && opt_recur)
 		die("Cannot set both page limit and whole scan\n");
 	else if (!opt_pages && !opt_recur)
-		die("Specify either -r (whole scan) or page limit (-n)\n");
+		die("Specify either -r (whole scan) or page limit (-p)\n");
 
 	/* eat rest */
 	if (argc - optind == 2) {
