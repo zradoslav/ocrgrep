@@ -1,0 +1,5 @@
+#!/bin/sh
+
+ISBN_REGEX='(ISBN.*[[:digit:]-]+X?)'
+
+$(dirname $0)/ocrgrep -Eior "${ISBN_REGEX}" "$@"
