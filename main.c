@@ -21,7 +21,7 @@ static void page_reset(Page *page);
 /* ocrgrep */
 static void die(const char *errstr, ...);
 static void usage(void);
-static char *ocr(TessBaseAPI *tapi, const Page *page, int *nbytes);
+static char *ocr(TessBaseAPI *tapi, const Page *page);
 static void match(const char *string, const regex_t *pregex, char **matches, int nmatches);
 
 #define FIXME_SIZE 4
@@ -57,7 +57,7 @@ usage()
 }
 
 char *
-ocr(TessBaseAPI *tapi, const Page *page, int *nbytes)
+ocr(TessBaseAPI *tapi, const Page *page)
 {
 	char *text, *bytes;
 
@@ -65,14 +65,12 @@ ocr(TessBaseAPI *tapi, const Page *page, int *nbytes)
 	if (TessBaseAPIRecognize(tapi, NULL))
 		return NULL;
 
-	text = TessBaseAPIGetUTF8Text(tapi);
-	if (!text)
+	if (!(text = TessBaseAPIGetUTF8Text(tapi)))
 		return NULL;
 
 	bytes = strdup(text);
-	*nbytes = strlen(text) + 1;
-
 	TessDeleteText(text);
+
 	return bytes;
 }
 
@@ -206,7 +204,7 @@ main(int argc, char *argv[])
 		pageno++;
 
 		if (!(opt_builtin && page.text))
-			page.text = ocr(ocr_api, &page, &page.textlen);
+			page.text = ocr(ocr_api, &page);
 
 		char* matches[FIXME_SIZE] = { 0 };
 		match(page.text, &pregex, matches, FIXME_SIZE);

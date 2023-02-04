@@ -8,7 +8,6 @@ typedef struct {
 	int bytes_per_line;
 	unsigned char* data;
 	char* text;
-	int textlen;
 } Page;
 
 #endif
