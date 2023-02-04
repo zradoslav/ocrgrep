@@ -2,95 +2,113 @@
 
 #include "page.h"
 
-static ddjvu_context_t* ctx;
+#define AS_IMPL(ptr) ((Impl*)(ptr))
 
-void* djvu_create(const char* file)
+typedef struct {
+	ddjvu_context_t *ctx;
+	ddjvu_document_t *doc;
+	int pageno;
+} Impl;
+
+void *djvu_create(const char *file);
+int   djvu_page_next(void *impl, Page *page);
+void  djvu_release(void *impl);
+
+void *
+djvu_create(const char *file)
 {
-	if(!ctx) {
-		ctx = ddjvu_context_create("djv ctx");
-		if(!ctx)
-			goto error_ctx;
+	Impl *impl;
+	ddjvu_context_t *ctx;
+	ddjvu_document_t* doc;
+
+	if (!(ctx = ddjvu_context_create("djv ctx")))
+		return NULL;
+
+	if (!(doc = ddjvu_document_create_by_filename(ctx, file, 0))) {
+		ddjvu_context_release(ctx);
+		return NULL;
 	}
-
-	ddjvu_document_t* doc = ddjvu_document_create_by_filename(ctx, file, 0);
-	if(!doc)
-		goto error_doc;
-
-	while(!ddjvu_document_decoding_done(doc))
+	while (!ddjvu_document_decoding_done(doc))
 		continue;
 
-	return (void*)doc;
+	impl = malloc(sizeof(Impl));
+	impl->ctx = ctx;
+	impl->doc = doc;
+	impl->pageno = 0;
 
-error_doc:
-	ddjvu_context_release(ctx);
-error_ctx:
-	return NULL;
+	return impl;
 }
 
-void djvu_release(void* doc)
+int
+djvu_page_next(void *impl, Page *page)
 {
-	if(!ctx)
-		return;
+	ddjvu_document_t *doc;
+	ddjvu_page_t *p;
+	ddjvu_rect_t r;
+	unsigned int stride, mask[4];
+	ddjvu_format_t *f;
+	ddjvu_page_type_t t;
+	char *data;
 
-	ddjvu_document_t* _doc = (ddjvu_document_t*)doc;
+	if (!impl)
+		return -1;
 
-	ddjvu_document_release(_doc);
-	ddjvu_context_release(ctx);
-}
+	doc = AS_IMPL(impl)->doc;
 
-int djvu_page_next(void* doc, Page* page)
-{
-	static int pageno = 0;
-	ddjvu_document_t* _doc = (ddjvu_document_t*)doc;
+	p = ddjvu_page_create_by_pageno(doc, AS_IMPL(impl)->pageno);
+	if (!p)
+		return -1;
 
-	ddjvu_page_t* _page = ddjvu_page_create_by_pageno(_doc, pageno);
-	if(!_page)
-		goto error_page;
-
-	while(!ddjvu_page_decoding_done(_page))
+	while (!ddjvu_page_decoding_done(p))
 		continue;
 
-	ddjvu_rect_t rect;
-	rect.w = ddjvu_page_get_width(_page);
-	rect.h = ddjvu_page_get_height(_page);
+	r.w = ddjvu_page_get_width(p);
+	r.h = ddjvu_page_get_height(p);
 
-	unsigned int stride;
-	ddjvu_format_t* format = NULL;
-	ddjvu_page_type_t type = ddjvu_page_get_type(_page);
-	if(type == DDJVU_PAGETYPE_BITONAL)
-	{
-		format = ddjvu_format_create(DDJVU_FORMAT_GREY8, 0, NULL);
-		stride = rect.w;
+	t = ddjvu_page_get_type(p);
+	if (t == DDJVU_PAGETYPE_BITONAL) {
+		f = ddjvu_format_create(DDJVU_FORMAT_GREY8, 0, NULL);
+		stride = r.w;
+	} else {
+		mask[0] = 0x00ff0000;
+		mask[1] = 0x0000ff00;
+		mask[2] = 0x000000ff;
+		mask[3] = 0xff000000;
+		f = ddjvu_format_create(DDJVU_FORMAT_RGBMASK32, 4, mask);
+		stride = r.w * 4;
 	}
-	else
-	{
-		unsigned int masks[4] = { 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 };
-		format = ddjvu_format_create(DDJVU_FORMAT_RGBMASK32, 4, masks);
-		stride = rect.w * 4;
-	}
-	ddjvu_format_set_row_order(format, 1);
+	ddjvu_format_set_row_order(f, 1);
 
-	unsigned char* buffer = malloc(stride * rect.h);
-	if(!ddjvu_page_render(_page, DDJVU_RENDER_COLOR, &rect, &rect, format, stride, (char*)buffer))
-	{
-		free(buffer);
-		goto error_rend;
+	data = malloc(stride * r.h);
+	if (!ddjvu_page_render(p, DDJVU_RENDER_COLOR, &r, &r, f, stride, data)) {
+		free(data);
+		ddjvu_format_release(f);
+		ddjvu_page_release(p);
+		return -1;
 	}
 
-	page->data = buffer;
-	page->width = rect.w;
-	page->height = rect.h;
-	page->bytes_per_pixel = (type == DDJVU_PAGETYPE_BITONAL) ? 1 : 3;
+	page->data = (unsigned char*)data;
+	page->width = r.w;
+	page->height = r.h;
+	page->bytes_per_pixel = (t == DDJVU_PAGETYPE_BITONAL) ? 1 : 3;
 	page->bytes_per_line = stride;
 	page->text = NULL;
 
-	pageno++;
+	AS_IMPL(impl)->pageno++;
 
-error_rend:
-	ddjvu_format_release(format);
-	ddjvu_page_release(_page);
+	ddjvu_format_release(f);
+	ddjvu_page_release(p);
 	return 0;
+}
 
-error_page:
-	return -1;
+void
+djvu_release(void *impl)
+{
+	if (!impl)
+		return;
+
+	ddjvu_document_release(AS_IMPL(impl)->doc);
+	ddjvu_context_release(AS_IMPL(impl)->ctx);
+
+	free(impl);
 }

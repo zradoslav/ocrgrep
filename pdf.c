@@ -1,64 +1,69 @@
-#include <stdlib.h>
 #include <string.h>
 
 #include <mupdf/fitz.h>
 
 #include "page.h"
 
-static fz_context* ctx;
+#define AS_IMPL(ptr) ((Impl*)(ptr))
 
-void* pdf_create(const char* file)
+typedef struct {
+	fz_context *ctx;
+	fz_document *doc;
+	int pageno;
+} Impl;
+
+void *pdf_create(const char *file);
+int   pdf_page_next(void *impl, Page *page);
+void  pdf_release(void *impl);
+
+void *
+pdf_create(const char* file)
 {
-	ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);
-	if(!ctx)
-		goto error_ctx;
+	Impl *impl;
+	fz_context *ctx;
+	fz_document *doc;
 
+	if (!(ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED)))
+		return NULL;
 	fz_register_document_handlers(ctx);
-	fz_document* doc = fz_open_document(ctx, file);
-	if(!doc)
-		goto error_doc;
 
-	return (void*)doc;
-
-error_doc:
-	fz_drop_context(ctx);
-error_ctx:
-	return NULL;
-}
-
-void pdf_release(void* doc)
-{
-	if(!ctx)
-		return;
-
-	fz_document* _doc = (fz_document*)doc;
-
-	fz_drop_document(ctx, _doc);
-	fz_drop_context(ctx);
-}
-
-int pdf_page_next(void* doc, Page* page)
-{
-	int ret = 0;
-
-	static int pageno = 0;
-	fz_document* _doc = (fz_document*)doc;
-
-	fz_matrix ctm = fz_scale(1, 1);
-
-	fz_page* _page = fz_load_page(ctx, _doc, pageno);
-	if(!_page)
-	{
-		ret = -1;
-		goto error_page;
+	if (!(doc = fz_open_document(ctx, file))) {
+		fz_drop_context(ctx);
+		return NULL;
 	}
 
+	impl = malloc(sizeof(Impl));
+	impl->ctx = ctx;
+	impl->doc = doc;
+	impl->pageno = 0;
+
+	return impl;
+}
+
+int
+pdf_page_next(void *impl, Page *page)
+{
+	fz_context *ctx;
+	fz_matrix ctm;
+	fz_page *p;
+	fz_pixmap *pix;
+	size_t nbytes;
+
+	fz_stext_page *stext_p;
+	fz_device *stext_d;
+	fz_irect bbox;
+	fz_point corner_tl, corner_br;
+
+	ctx = AS_IMPL(impl)->ctx;
+
+	if (!(p = fz_load_page(ctx, AS_IMPL(impl)->doc, AS_IMPL(impl)->pageno)))
+		return -1;
+
+	ctm = fz_scale(1, 1);
 	/* 'fz_device_gray' can be used to reduce mem by 3 */
-	fz_pixmap* pix = fz_new_pixmap_from_page(ctx, _page, ctm, fz_device_rgb(ctx), 0);
-	if(!pix)
-	{
-		ret = -1;
-		goto error_pix;
+	if (!(pix = fz_new_pixmap_from_page(ctx, p, ctm, fz_device_rgb(ctx), 0))) {
+		fz_drop_page(ctx, p);
+		return -1;
 	}
 
 	page->width = fz_pixmap_width(ctx, pix);
@@ -66,36 +71,42 @@ int pdf_page_next(void* doc, Page* page)
 	page->bytes_per_pixel = pix->n;
 	page->bytes_per_line = fz_pixmap_stride(ctx, pix);
 
-	size_t len = page->height * page->bytes_per_line;
-	page->data = malloc(len);
-	memcpy(page->data, fz_pixmap_samples(ctx, pix), len);
+	nbytes = page->height * page->bytes_per_line;
+	page->data = malloc(nbytes);
+	memcpy(page->data, fz_pixmap_samples(ctx, pix), nbytes);
 
-	fz_stext_page* stext_page = fz_new_stext_page_from_page(ctx, _page, NULL);
-	if(stext_page)
-	{
-		fz_device* stext_device = fz_new_stext_device(ctx, stext_page, NULL);
-		if(stext_device)
-		{
-			fz_run_page(ctx, _page, stext_device, ctm, NULL);
+	if ((stext_p = fz_new_stext_page_from_page(ctx, p, NULL))) {
+		if ((stext_d = fz_new_stext_device(ctx, stext_p, NULL))) {
+			fz_run_page(ctx, p, stext_d, ctm, NULL);
 
-			fz_irect bound_box = fz_pixmap_bbox(ctx, pix);
-			fz_point corner_tl = {bound_box.x0, bound_box.y0};
-			fz_point corner_br = {bound_box.x1, bound_box.y1};
+			bbox = fz_pixmap_bbox(ctx, pix);
+			corner_tl = fz_make_point(bbox.x0, bbox.y0);
+			corner_br = fz_make_point(bbox.x1, bbox.y1);
 #ifdef _WIN32
-			page->text = fz_copy_selection(ctx, stext_page, corner_tl, corner_br, 1);
+			page->text = fz_copy_selection(ctx, stext_p, corner_tl, corner_br, 1);
 #else
-			page->text = fz_copy_selection(ctx, stext_page, corner_tl, corner_br, 0);
+			page->text = fz_copy_selection(ctx, stext_p, corner_tl, corner_br, 0);
 #endif
-			fz_close_device(ctx, stext_device);
-			fz_drop_device(ctx, stext_device);
+			fz_close_device(ctx, stext_d);
+			fz_drop_device(ctx, stext_d);
 		}
-		fz_drop_stext_page(ctx, stext_page);
+		fz_drop_stext_page(ctx, stext_p);
 	}
-	pageno++;
+	AS_IMPL(impl)->pageno++;
 
 	fz_drop_pixmap(ctx, pix);
-error_pix:
-	fz_drop_page(ctx, _page);
-error_page:
-	return ret;
+	fz_drop_page(ctx, p);
+	return 0;
+}
+
+void
+pdf_release(void *impl)
+{
+	if (!impl)
+		return;
+
+	fz_drop_document(AS_IMPL(impl)->ctx, AS_IMPL(impl)->doc);
+	fz_drop_context(AS_IMPL(impl)->ctx);
+
+	free(impl);
 }

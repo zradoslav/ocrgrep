@@ -13,7 +13,7 @@ typedef struct {
 	void *(*create)(const char*);
 	void (*release)(void*);
 	int (*page_next)(void*, Page*);
-	void *ctx;
+	void *impl;
 } DocHandle;
 
 static void page_reset(Page *page);
@@ -197,9 +197,9 @@ main(int argc, char *argv[])
 		die("regcomp failed: %s\n", errbuf);
 	}
 
-	doc->ctx = doc->create(file);
+	doc->impl = doc->create(file);
 	while (opt_recur || --opt_pages) {
-		if (doc->page_next(doc->ctx, &page) != 0) {
+		if (doc->page_next(doc->impl, &page) != 0) {
 			page_reset(&page);
 			break;
 		}
@@ -224,7 +224,7 @@ main(int argc, char *argv[])
 		page_reset(&page);
 	}
 
-	doc->release(doc->ctx);
+	doc->release(doc->impl);
 	regfree(&pregex);
 	/* release OCR */
 	TessBaseAPIEnd(ocr_api);
