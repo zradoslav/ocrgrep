@@ -131,7 +131,7 @@ main(int argc, char *argv[])
 	TessBaseAPI* ocr_api;
 	DocHandle* doc;
 	Page page;
-	int pageno = 0;
+	int pageno;
 
 	int opt;
 	while ((opt = getopt(argc, argv, "aEinrvp:x:X:")) != -1) {
@@ -174,16 +174,17 @@ main(int argc, char *argv[])
 	else if (!opt_pages && !opt_recur)
 		die("Specify either -r (whole scan) or page limit (-p)\n");
 
-	/* eat rest */
-	if (argc - optind == 2) {
-		pattern = argv[optind++];
-		file = argv[optind++];
-	} else {
+	if ((optind == argc) || (optind == (argc - 1)))
 		die("Invalid arguments\n");
-	}
 
-	if (!(doc = get_handle(file)))
-		die("Unsupported file type\n");
+	pattern = argv[optind++];
+	/* create regexp */
+	if ((errcode = regcomp(&pregex, pattern, opt_extended | opt_icase | REG_NEWLINE))) {
+		errbuf_size = regerror(errcode, &pregex, NULL, 0);
+		errbuf = malloc(errbuf_size);
+		regerror(errcode, &pregex, errbuf, errbuf_size);
+		die("regcomp failed: %s\n", errbuf);
+	}
 
 	/* initialize OCR */
 	ocr_api = TessBaseAPICreate();
@@ -203,42 +204,42 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* create regexp */
-	if ((errcode = regcomp(&pregex, pattern, opt_extended | opt_icase | REG_NEWLINE))) {
-		errbuf_size = regerror(errcode, &pregex, NULL, 0);
-		errbuf = malloc(errbuf_size);
-		regerror(errcode, &pregex, errbuf, errbuf_size);
-		die("regcomp failed: %s\n", errbuf);
-	}
+	/* eat rest and process */
+	while (optind != argc) {
+		pageno = 0;
+		file = argv[optind++];
 
-	doc->impl = doc->create(file);
-	while (opt_recur || --opt_pages) {
-		if (doc->page_next(doc->impl, &page) != 0) {
+		if (!(doc = get_handle(file)))
+			die("Unsupported file type\n");
+
+		doc->impl = doc->create(file);
+		while (opt_recur || (pageno != opt_pages)) {
+			if (doc->page_next(doc->impl, &page) != 0) {
+				page_reset(&page);
+				break;
+			}
+			pageno++;
+
+			if (!(opt_builtin && page.text))
+				page.text = ocr(ocr_api, &page);
+
+			char* matches[FIXME_SIZE] = { 0 };
+			match(page.text, &pregex, matches, FIXME_SIZE);
+
+			for (int i = 0; i < FIXME_SIZE; i++) {
+				if (matches[i]) {
+					if (opt_number)
+						printf("%d:%s\n", pageno, matches[i]);
+					else
+						printf("%s\n", matches[i]);
+					free(matches[i]);
+				}
+			}
 			page_reset(&page);
-			break;
 		}
-		pageno++;
-
-		if (!(opt_builtin && page.text))
-			page.text = ocr(ocr_api, &page);
-
-		char* matches[FIXME_SIZE] = { 0 };
-		match(page.text, &pregex, matches, FIXME_SIZE);
-
-		for (int i = 0; i < FIXME_SIZE; i++) {
-			if (matches[i]) {
-				if (opt_number)
-					printf("%d:%s\n", pageno, matches[i]);
-				else
-					printf("%s\n", matches[i]);
-				free(matches[i]);
-			}	
-		}
-
-		page_reset(&page);
+		doc->release(doc->impl);
 	}
 
-	doc->release(doc->impl);
 	regfree(&pregex);
 	/* release OCR */
 	TessBaseAPIEnd(ocr_api);
