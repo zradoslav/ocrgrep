@@ -53,7 +53,7 @@ die(const char *errstr, ...)
 void
 usage()
 {
-	die("usage: ocrgrep [-aEinr] [-p pages] [-x language] PATTERN FILE...\n");
+	die("usage: ocrgrep [-aEinr] [-p pages] [-x language] [-X LIST] PATTERN FILE...\n");
 }
 
 char *
@@ -126,7 +126,7 @@ main(int argc, char *argv[])
 	int opt_number = 0, opt_recur = 0;
 	int opt_builtin = 0;
 	int opt_pages = 0;
-	char *opt_tesslang = "eng";
+	char *opt_tesslang = "eng", *opt_tessvars = NULL;
 
 	TessBaseAPI* ocr_api;
 	DocHandle* doc;
@@ -134,7 +134,7 @@ main(int argc, char *argv[])
 	int pageno = 0;
 
 	int opt;
-	while ((opt = getopt(argc, argv, "aEinrvp:x:")) != -1) {
+	while ((opt = getopt(argc, argv, "aEinrvp:x:X:")) != -1) {
 		switch (opt) {
 		case 'a':
 			opt_builtin = 1;
@@ -156,6 +156,11 @@ main(int argc, char *argv[])
 			break;
 		case 'x':
 			opt_tesslang = optarg;
+			if (*opt_tesslang == '-') usage();
+			break;
+		case 'X':
+			opt_tessvars = optarg;
+			if (*opt_tessvars == '-') usage();
 			break;
 		case 'v':
 			die("ocrgrep " VERSION " \n");
@@ -186,6 +191,17 @@ main(int argc, char *argv[])
 		die("OCR engine init failure\n");
 	/* make Tesseract quiet */
 	TessBaseAPISetVariable(ocr_api, "debug_file", "/dev/null");
+	if (opt_tessvars) {
+		char *var = strtok(opt_tessvars, ",="), *val;
+		while (var) {
+			if ((val = strtok(NULL, ",="))) {
+				TessBaseAPISetVariable(ocr_api, var, val);
+				var = strtok(NULL, ",=");
+			} else {
+				die("Invalid arguments\n");
+			}
+		}
+	}
 
 	/* create regexp */
 	if ((errcode = regcomp(&pregex, pattern, opt_extended | opt_icase | REG_NEWLINE))) {
