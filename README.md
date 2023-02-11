@@ -1,6 +1,6 @@
 # ocrgrep
 
-`usage: ocrgrep [-aEinr] [-p pages] [-x language] [-X LIST] PATTERN FILE...`
+`usage: ocrgrep [-aEhHinr] [-p pages] [-x language] [-X LIST] PATTERN FILE...`
 
 OCR powered grep, loves your RAM.
 

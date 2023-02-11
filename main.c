@@ -53,7 +53,7 @@ die(const char *errstr, ...)
 void
 usage()
 {
-	die("usage: ocrgrep [-aEinr] [-p pages] [-x language] [-X LIST] PATTERN FILE...\n");
+	die("usage: ocrgrep [-aEihHnr] [-p pages] [-x language] [-X LIST] PATTERN FILE...\n");
 }
 
 char *
@@ -123,7 +123,7 @@ main(int argc, char *argv[])
 
 	char *file, *pattern;
 	int opt_extended = 0, opt_icase = 0;
-	int opt_number = 0, opt_recur = 0;
+	int opt_file = -1, opt_number = 0, opt_recur = 0;
 	int opt_builtin = 0;
 	int opt_pages = 0;
 	char *opt_tesslang = "eng", *opt_tessvars = NULL;
@@ -134,13 +134,19 @@ main(int argc, char *argv[])
 	int pageno;
 
 	int opt;
-	while ((opt = getopt(argc, argv, "aEinrvp:x:X:")) != -1) {
+	while ((opt = getopt(argc, argv, "aEihHnrvp:x:X:")) != -1) {
 		switch (opt) {
 		case 'a':
 			opt_builtin = 1;
 			break;
 		case 'E':
 			opt_extended = REG_EXTENDED;
+			break;
+		case 'h':
+			opt_file = 0;
+			break;
+		case 'H':
+			opt_file = 1;
 			break;
 		case 'i':
 			opt_icase = REG_ICASE;
@@ -176,6 +182,10 @@ main(int argc, char *argv[])
 
 	if ((optind == argc) || (optind == (argc - 1)))
 		die("Invalid arguments\n");
+	else if (argc - optind > 2) {
+		/* set defaults for multiple files */
+		if (opt_file == -1) opt_file = 1;
+	}
 
 	pattern = argv[optind++];
 	/* create regexp */
@@ -228,10 +238,11 @@ main(int argc, char *argv[])
 
 			for (int i = 0; i < FIXME_SIZE; i++) {
 				if (matches[i]) {
+					if (opt_file)
+						printf("%s:", file);
 					if (opt_number)
-						printf("%d:%s\n", pageno, matches[i]);
-					else
-						printf("%s\n", matches[i]);
+						printf("%d:", pageno);
+					printf("%s\n", matches[i]);
 					free(matches[i]);
 				}
 			}
