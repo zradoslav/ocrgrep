@@ -19,7 +19,7 @@ djvu_create(const char *file)
 {
 	Impl *impl;
 	ddjvu_context_t *ctx;
-	ddjvu_document_t* doc;
+	ddjvu_document_t *doc;
 
 	if (!(ctx = ddjvu_context_create("djv ctx")))
 		return NULL;
@@ -45,7 +45,7 @@ djvu_page_next(void *impl, Page *page)
 	ddjvu_document_t *doc;
 	ddjvu_page_t *p;
 	ddjvu_rect_t r;
-	unsigned int stride, mask[4];
+	unsigned int stride;
 	ddjvu_format_t *f;
 	ddjvu_page_type_t t;
 	char *data;
@@ -70,10 +70,12 @@ djvu_page_next(void *impl, Page *page)
 		f = ddjvu_format_create(DDJVU_FORMAT_GREY8, 0, NULL);
 		stride = r.w;
 	} else {
-		mask[0] = 0x00ff0000;
-		mask[1] = 0x0000ff00;
-		mask[2] = 0x000000ff;
-		mask[3] = 0xff000000;
+		unsigned int mask[] = {
+			0x00ff0000,
+			0x0000ff00,
+			0x000000ff,
+			0xff000000
+		};
 		f = ddjvu_format_create(DDJVU_FORMAT_RGBMASK32, 4, mask);
 		stride = r.w * 4;
 	}
@@ -87,7 +89,7 @@ djvu_page_next(void *impl, Page *page)
 		return -1;
 	}
 
-	page->data = (unsigned char*)data;
+	page->data = (unsigned char *)data;
 	page->width = r.w;
 	page->height = r.h;
 	page->bytes_per_pixel = (t == DDJVU_PAGETYPE_BITONAL) ? 1 : 3;

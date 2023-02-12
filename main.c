@@ -51,7 +51,7 @@ die(const char *errstr, ...)
 }
 
 void
-usage()
+usage(void)
 {
 	die("usage: ocrgrep [-aEihHnr] [-p pages] [-x language] [-X LIST] PATTERN FILE...\n");
 }
@@ -83,7 +83,7 @@ match(const char *string, const regex_t *pregex, char **matches, int nmatches)
 	regmatch_t *groups = malloc(ngroups * sizeof(regmatch_t));
 
 	int match_num = 0;
-	while (true)
+	while (1)
 	{
 		if (regexec(pregex, cursor, ngroups, groups, 0) || match_num == nmatches)
 			break;
@@ -128,8 +128,8 @@ main(int argc, char *argv[])
 	int opt_pages = 0;
 	char *opt_tesslang = "eng", *opt_tessvars = NULL;
 
-	TessBaseAPI* ocr_api;
-	DocHandle* doc;
+	TessBaseAPI *ocr_api;
+	DocHandle *doc;
 	Page page;
 	int pageno;
 
@@ -169,7 +169,7 @@ main(int argc, char *argv[])
 			if (*opt_tessvars == '-') usage();
 			break;
 		case 'v':
-			die("ocrgrep " VERSION " \n");
+			die("ocrgrep %s\n", VERSION);
 		default:
 			usage();
 		}
@@ -180,9 +180,9 @@ main(int argc, char *argv[])
 	else if (!opt_pages && !opt_recur)
 		die("Specify either -r (whole scan) or page limit (-p)\n");
 
-	if ((optind == argc) || (optind == (argc - 1)))
-		die("Invalid arguments\n");
-	else if (argc - optind > 2) {
+	if (argc - optind < 2) {
+		usage();
+	} else {
 		/* set defaults for multiple files */
 		if (opt_file == -1) opt_file = 1;
 	}
@@ -209,7 +209,7 @@ main(int argc, char *argv[])
 				TessBaseAPISetVariable(ocr_api, var, val);
 				var = strtok(NULL, ",=");
 			} else {
-				die("Invalid arguments\n");
+				usage();
 			}
 		}
 	}
@@ -233,7 +233,7 @@ main(int argc, char *argv[])
 			if (!(opt_builtin && page.text))
 				page.text = ocr(ocr_api, &page);
 
-			char* matches[FIXME_SIZE] = { 0 };
+			char *matches[FIXME_SIZE] = { 0 };
 			match(page.text, &pregex, matches, FIXME_SIZE);
 
 			for (int i = 0; i < FIXME_SIZE; i++) {
